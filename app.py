@@ -153,7 +153,7 @@ if st.button("🚀 Predict Closing Price"):
     # --------------------------------------------------
     # VISUALIZATION (ACTUAL vs PREDICTED)
     # --------------------------------------------------
-st.subheader("📉 Actual vs Predicted Trend (Overlapping)")
+st.subheader("📉 Actual vs Predicted Trend ")
 
 # Use the LAST `horizon` actual values for comparison
 actual_overlap = df[["Close"]].tail(horizon).copy()
@@ -170,4 +170,5 @@ pred_overlap = pd.DataFrame(
 plot_df = pd.concat([actual_overlap, pred_overlap], axis=1)
 
 st.line_chart(plot_df)
+
 
