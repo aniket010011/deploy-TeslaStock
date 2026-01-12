@@ -27,6 +27,15 @@ ALL_FEATURES = [
 ]
 
 # --------------------------------------------------
+# STREAMLIT SESSION STATE INIT 
+# --------------------------------------------------
+if "y_pred" not in st.session_state:
+    st.session_state.y_pred = None
+
+if "prev_horizon" not in st.session_state:
+    st.session_state.prev_horizon = None
+
+# --------------------------------------------------
 # LOAD DATA
 # --------------------------------------------------
 @st.cache_data
@@ -35,6 +44,7 @@ def load_data():
     df["Date"] = pd.to_datetime(df["Date"])
     df.set_index("Date", inplace=True)
 
+    # Feature engineering 
     df["Close"] = df["Close"].interpolate(method="time")
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
@@ -51,13 +61,7 @@ def load_rnn_model(horizon):
     return load_model(MODEL_PATHS[horizon])
 
 # --------------------------------------------------
-# STREAMLIT STATE INIT (CRITICAL)
-# --------------------------------------------------
-if "y_pred" not in st.session_state:
-    st.session_state.y_pred = None
-
-# --------------------------------------------------
-# UI
+# UI SETUP
 # --------------------------------------------------
 st.set_page_config(
     page_title="Tesla Stock Price Prediction (SimpleRNN)",
@@ -66,10 +70,13 @@ st.set_page_config(
 
 st.title("📈 Tesla Stock Price Prediction using SimpleRNN")
 st.write(
-    "Deployed using trained SimpleRNN models for "
+    "Deployed using trained **SimpleRNN** models for "
     "1-day, 5-day, and 10-day forecasting."
 )
 
+# --------------------------------------------------
+# LOAD DATA
+# --------------------------------------------------
 df = load_data()
 
 # --------------------------------------------------
@@ -82,8 +89,16 @@ horizon = st.sidebar.selectbox(
     [1, 5, 10]
 )
 
+# 🔑 RESET predictions when horizon changes
+if st.session_state.prev_horizon != horizon:
+    st.session_state.y_pred = None
+    st.session_state.prev_horizon = horizon
+
 model = load_rnn_model(horizon)
 
+# --------------------------------------------------
+# FEATURE ALIGNMENT
+# --------------------------------------------------
 expected_features = model.input_shape[2]
 FEATURE_COLUMNS = ALL_FEATURES[:expected_features]
 
@@ -111,14 +126,14 @@ if st.button("🚀 Predict Closing Price"):
     predictions = []
     for i in range(y_pred_scaled.shape[1]):
         dummy = np.zeros((1, expected_features))
-        dummy[0, 0] = y_pred_scaled[0, i]
+        dummy[0, 0] = y_pred_scaled[0, i]  # Close always index 0
         inv = scaler.inverse_transform(dummy)[0, 0]
         predictions.append(inv)
 
     st.session_state.y_pred = np.array(predictions)
 
 # --------------------------------------------------
-# DISPLAY RESULTS
+# DISPLAY RESULTS 
 # --------------------------------------------------
 if st.session_state.y_pred is not None:
     y_pred = st.session_state.y_pred
@@ -126,7 +141,10 @@ if st.session_state.y_pred is not None:
     st.subheader(f"📊 {horizon}-Day Prediction")
 
     if horizon == 1:
-        st.metric("Predicted Closing Price", f"${y_pred[0]:.2f}")
+        st.metric(
+            "Predicted Closing Price",
+            f"${y_pred[0]:.2f}"
+        )
     else:
         st.dataframe(
             pd.DataFrame(
@@ -138,7 +156,7 @@ if st.session_state.y_pred is not None:
         )
 
     # --------------------------------------------------
-    # OVERLAPPING ACTUAL vs PREDICTED
+    # ACTUAL vs PREDICTED 
     # --------------------------------------------------
     st.subheader("📉 Actual vs Predicted Trend")
 
@@ -158,4 +176,4 @@ if st.session_state.y_pred is not None:
 # FOOTER
 # --------------------------------------------------
 st.markdown("---")
-st.caption("SimpleRNN | Deep Learning | Prediction using Streamlit")
+st.caption("SimpleRNN | Deep Learning | Prediction | Deployed using Streamlit")
