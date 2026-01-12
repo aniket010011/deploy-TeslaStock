@@ -18,7 +18,7 @@ MODEL_PATHS = {
 
 DATA_PATH = "TSLA.csv"
 
-# Superset of all features ever used
+# Superset of all possible features
 ALL_FEATURES = [
     "Close",
     "Volume",
@@ -36,7 +36,7 @@ def load_data():
     df["Date"] = pd.to_datetime(df["Date"])
     df.set_index("Date", inplace=True)
 
-    # Feature engineering (same as notebook)
+    # Feature engineering
     df["Close"] = df["Close"].interpolate(method="time")
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
@@ -53,7 +53,7 @@ def load_rnn_model(horizon):
     return load_model(MODEL_PATHS[horizon])
 
 # --------------------------------------------------
-# UI
+# UI SETUP
 # --------------------------------------------------
 st.set_page_config(
     page_title="Tesla Stock Price Prediction (SimpleRNN)",
@@ -62,10 +62,13 @@ st.set_page_config(
 
 st.title("📈 Tesla Stock Price Prediction using SimpleRNN")
 st.write(
-    "Python 3.13–compatible deployment using trained SimpleRNN models "
+    "Deployed using trained **SimpleRNN** models "
     "for 1-day, 5-day, and 10-day forecasting."
 )
 
+# --------------------------------------------------
+# LOAD DATA
+# --------------------------------------------------
 df = load_data()
 
 # --------------------------------------------------
@@ -81,7 +84,7 @@ horizon = st.sidebar.selectbox(
 model = load_rnn_model(horizon)
 
 # --------------------------------------------------
-# 🔑 ALIGN FEATURES WITH MODEL
+# FEATURE ALIGNMENT
 # --------------------------------------------------
 expected_features = model.input_shape[2]
 FEATURE_COLUMNS = ALL_FEATURES[:expected_features]
@@ -91,7 +94,7 @@ st.sidebar.info(
 )
 
 # --------------------------------------------------
-# PREPROCESSING (NO JOBLIB)
+# PREPROCESSING
 # --------------------------------------------------
 X = df[FEATURE_COLUMNS].copy()
 
@@ -111,18 +114,17 @@ X_input = X_input.reshape(
 if st.button("🚀 Predict Closing Price"):
     with st.spinner("Running SimpleRNN prediction..."):
 
-        # Predict (scaled)
         y_pred_scaled = model.predict(X_input, verbose=0)
-        # y_pred_scaled shape:
-        # (1, 1)  -> 1-day
-        # (1, 5)  -> 5-day
-        # (1, 10) -> 10-day
+        # Shapes:
+        # (1, 1)  -> 1 day
+        # (1, 5)  -> 5 days
+        # (1, 10) -> 10 days
 
         predictions = []
 
         for i in range(y_pred_scaled.shape[1]):
             dummy = np.zeros((1, expected_features))
-            dummy[0, 0] = y_pred_scaled[0, i]  # Close always index 0
+            dummy[0, 0] = y_pred_scaled[0, i]  # Close is always index 0
             inv = scaler.inverse_transform(dummy)[0, 0]
             predictions.append(inv)
 
@@ -135,32 +137,50 @@ if st.button("🚀 Predict Closing Price"):
 
     if horizon == 1:
         st.metric(
-            label="Predicted Closing Price",
-            value=f"${y_pred[0]:.2f}"
+            "Predicted Closing Price",
+            f"${y_pred[0]:.2f}"
         )
     else:
         st.dataframe(
-            pd.DataFrame(y_pred, columns=["Predicted Close"])
+            pd.DataFrame(
+                {
+                    "Day": np.arange(1, horizon + 1),
+                    "Predicted Close": y_pred
+                }
+            )
         )
 
     # --------------------------------------------------
-    # VISUALIZATION
+    # VISUALIZATION (ACTUAL vs PREDICTED)
     # --------------------------------------------------
     st.subheader("📉 Actual vs Predicted Trend")
 
-# Actual historical data
-actual_df = df[["Close"]].tail(100).copy()
-actual_df.rename(columns={"Close": "Actual"}, inplace=True)
+    # Actual historical prices
+    actual_df = df[["Close"]].tail(100).copy()
+    actual_df.rename(columns={"Close": "Actual"}, inplace=True)
 
-# Predicted future data
-pred_df = pd.DataFrame(
-    y_pred,
-    index=future_dates,
-    columns=["Predicted"]
+    # Predicted future prices
+    future_dates = pd.date_range(
+        start=actual_df.index[-1],
+        periods=horizon + 1,
+        freq="B"
+    )[1:]
+
+    pred_df = pd.DataFrame(
+        y_pred,
+        index=future_dates,
+        columns=["Predicted"]
+    )
+
+    # Combine for plotting
+    plot_df = pd.concat([actual_df, pred_df], axis=0)
+
+    st.line_chart(plot_df)
+
+# --------------------------------------------------
+# FOOTER
+# --------------------------------------------------
+st.markdown("---")
+st.caption(
+    "SimpleRNN | Multi-Step Forecasting "
 )
-
-# Combine for plotting
-plot_df = pd.concat([actual_df, pred_df], axis=0)
-
-st.line_chart(plot_df)
-
