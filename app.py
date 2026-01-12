@@ -18,7 +18,7 @@ MODEL_PATHS = {
 
 DATA_PATH = "TSLA.csv"
 
-# ALL POSSIBLE FEATURES (superset)
+# Superset of all features ever used
 ALL_FEATURES = [
     "Close",
     "Volume",
@@ -36,6 +36,7 @@ def load_data():
     df["Date"] = pd.to_datetime(df["Date"])
     df.set_index("Date", inplace=True)
 
+    # Feature engineering (same as notebook)
     df["Close"] = df["Close"].interpolate(method="time")
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
@@ -80,10 +81,9 @@ horizon = st.sidebar.selectbox(
 model = load_rnn_model(horizon)
 
 # --------------------------------------------------
-# 🔑 CRITICAL FIX: ALIGN FEATURES WITH MODEL
+# 🔑 ALIGN FEATURES WITH MODEL
 # --------------------------------------------------
-expected_features = model.input_shape[2]  # number of features model expects
-
+expected_features = model.input_shape[2]
 FEATURE_COLUMNS = ALL_FEATURES[:expected_features]
 
 st.sidebar.info(
@@ -91,7 +91,7 @@ st.sidebar.info(
 )
 
 # --------------------------------------------------
-# PREPROCESS
+# PREPROCESSING (NO JOBLIB)
 # --------------------------------------------------
 X = df[FEATURE_COLUMNS].copy()
 
@@ -99,7 +99,11 @@ scaler = MinMaxScaler()
 X_scaled = scaler.fit_transform(X)
 
 X_input = X_scaled[-WINDOW_SIZE:]
-X_input = X_input.reshape(1, WINDOW_SIZE, expected_features)
+X_input = X_input.reshape(
+    1,
+    WINDOW_SIZE,
+    expected_features
+)
 
 # --------------------------------------------------
 # PREDICTION
@@ -107,49 +111,64 @@ X_input = X_input.reshape(1, WINDOW_SIZE, expected_features)
 if st.button("🚀 Predict Closing Price"):
     with st.spinner("Running SimpleRNN prediction..."):
 
+        # Predict (scaled)
         y_pred_scaled = model.predict(X_input, verbose=0)
-
         # y_pred_scaled shape:
-        # (1, horizon) for multi-day
-        # (1, 1) for 1-day
+        # (1, 1)  -> 1-day
+        # (1, 5)  -> 5-day
+        # (1, 10) -> 10-day
 
         predictions = []
 
-    for i in range(y_pred_scaled.shape[1]):
-        dummy = np.zeros((1, expected_features))
-        dummy[0, 0] = y_pred_scaled[0, i]  # Close is index 0
-        inv = scaler.inverse_transform(dummy)[0, 0]
-        predictions.append(inv)
+        for i in range(y_pred_scaled.shape[1]):
+            dummy = np.zeros((1, expected_features))
+            dummy[0, 0] = y_pred_scaled[0, i]  # Close always index 0
+            inv = scaler.inverse_transform(dummy)[0, 0]
+            predictions.append(inv)
 
-y_pred = np.array(predictions)
+        y_pred = np.array(predictions)
 
-
+    # --------------------------------------------------
+    # OUTPUT
+    # --------------------------------------------------
     st.subheader(f"📊 {horizon}-Day Prediction")
 
     if horizon == 1:
-        st.metric("Predicted Closing Price", f"${y_pred[0]:.2f}")
+        st.metric(
+            label="Predicted Closing Price",
+            value=f"${y_pred[0]:.2f}"
+        )
     else:
-        st.dataframe(pd.DataFrame(y_pred, columns=["Predicted Close"]))
+        st.dataframe(
+            pd.DataFrame(y_pred, columns=["Predicted Close"])
+        )
 
-    recent = df[["Close"]].tail(100)
+    # --------------------------------------------------
+    # VISUALIZATION
+    # --------------------------------------------------
+    st.subheader("📉 Actual vs Predicted Trend")
+
+    recent_actual = df[["Close"]].tail(100)
 
     future_dates = pd.date_range(
-        start=recent.index[-1],
+        start=recent_actual.index[-1],
         periods=horizon + 1,
         freq="B"
     )[1:]
 
-    future_df = pd.DataFrame(
+    future_pred = pd.DataFrame(
         y_pred,
         index=future_dates,
         columns=["Close"]
     )
 
-    st.line_chart(pd.concat([recent, future_df]))
+    combined = pd.concat([recent_actual, future_pred])
+    st.line_chart(combined)
 
 # --------------------------------------------------
 # FOOTER
 # --------------------------------------------------
 st.markdown("---")
-st.caption("SimpleRNN | Feature-safe | Python 3.13 | Streamlit Cloud")
-
+st.caption(
+    "SimpleRNN | Multi-Step Forecasting | Python 3.13 | Streamlit Cloud"
+)
