@@ -6,7 +6,7 @@ from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import load_model
 
 # --------------------------------------------------
-# CONFIG (MUST MATCH TRAINING)
+# CONFIG
 # --------------------------------------------------
 WINDOW_SIZE = 60
 
@@ -18,8 +18,8 @@ MODEL_PATHS = {
 
 DATA_PATH = "TSLA.csv"
 
-# EXACT feature order used during training
-FEATURE_COLUMNS = [
+# ALL POSSIBLE FEATURES (superset)
+ALL_FEATURES = [
     "Close",
     "Volume",
     "MA20",
@@ -36,7 +36,6 @@ def load_data():
     df["Date"] = pd.to_datetime(df["Date"])
     df.set_index("Date", inplace=True)
 
-    # Feature engineering (same as notebook)
     df["Close"] = df["Close"].interpolate(method="time")
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
@@ -53,7 +52,7 @@ def load_rnn_model(horizon):
     return load_model(MODEL_PATHS[horizon])
 
 # --------------------------------------------------
-# UI SETUP
+# UI
 # --------------------------------------------------
 st.set_page_config(
     page_title="Tesla Stock Price Prediction (SimpleRNN)",
@@ -62,13 +61,10 @@ st.set_page_config(
 
 st.title("📈 Tesla Stock Price Prediction using SimpleRNN")
 st.write(
-    "Python 3.13–compatible deployment using trained **SimpleRNN** models "
+    "Python 3.13–compatible deployment using trained SimpleRNN models "
     "for 1-day, 5-day, and 10-day forecasting."
 )
 
-# --------------------------------------------------
-# LOAD DATA
-# --------------------------------------------------
 df = load_data()
 
 # --------------------------------------------------
@@ -84,29 +80,26 @@ horizon = st.sidebar.selectbox(
 model = load_rnn_model(horizon)
 
 # --------------------------------------------------
-# DATA PREVIEW
+# 🔑 CRITICAL FIX: ALIGN FEATURES WITH MODEL
 # --------------------------------------------------
-with st.expander("🔍 View Latest Data"):
-    st.dataframe(df.tail(10))
+expected_features = model.input_shape[2]  # number of features model expects
+
+FEATURE_COLUMNS = ALL_FEATURES[:expected_features]
+
+st.sidebar.info(
+    f"Model expects {expected_features} feature(s): {FEATURE_COLUMNS}"
+)
 
 # --------------------------------------------------
-# PREPROCESSING (NO JOBLIB, NO PICKLE)
+# PREPROCESS
 # --------------------------------------------------
 X = df[FEATURE_COLUMNS].copy()
 
-# Fit scaler on historical data (deployment-safe)
 scaler = MinMaxScaler()
 X_scaled = scaler.fit_transform(X)
 
-# Build input window
 X_input = X_scaled[-WINDOW_SIZE:]
-
-# Enforce exact model input shape
-X_input = X_input.reshape(
-    1,
-    WINDOW_SIZE,
-    len(FEATURE_COLUMNS)
-)
+X_input = X_input.reshape(1, WINDOW_SIZE, expected_features)
 
 # --------------------------------------------------
 # PREDICTION
@@ -114,57 +107,38 @@ X_input = X_input.reshape(
 if st.button("🚀 Predict Closing Price"):
     with st.spinner("Running SimpleRNN prediction..."):
 
-        # Predict (scaled)
         y_pred_scaled = model.predict(X_input, verbose=0)
 
-        # Inverse scale ONLY the Close price
-        dummy = np.zeros((y_pred_scaled.shape[0], len(FEATURE_COLUMNS)))
-        dummy[:, 0] = y_pred_scaled.flatten()  # Close is index 0
+        dummy = np.zeros((y_pred_scaled.shape[0], expected_features))
+        dummy[:, 0] = y_pred_scaled.flatten()  # Close always index 0
 
         y_pred = scaler.inverse_transform(dummy)[:, 0]
 
-    # --------------------------------------------------
-    # OUTPUT
-    # --------------------------------------------------
-    st.subheader(f"📊 {horizon}-Day Prediction (SimpleRNN)")
+    st.subheader(f"📊 {horizon}-Day Prediction")
 
     if horizon == 1:
-        st.metric(
-            label="Predicted Closing Price",
-            value=f"${y_pred[0]:.2f}"
-        )
+        st.metric("Predicted Closing Price", f"${y_pred[0]:.2f}")
     else:
-        st.dataframe(
-            pd.DataFrame(y_pred, columns=["Predicted Close"])
-        )
+        st.dataframe(pd.DataFrame(y_pred, columns=["Predicted Close"]))
 
-    # --------------------------------------------------
-    # VISUALIZATION
-    # --------------------------------------------------
-    st.subheader("📉 Actual vs Predicted Trend")
-
-    recent_actual = df[["Close"]].tail(100)
+    recent = df[["Close"]].tail(100)
 
     future_dates = pd.date_range(
-        start=recent_actual.index[-1],
+        start=recent.index[-1],
         periods=horizon + 1,
         freq="B"
     )[1:]
 
-    future_pred = pd.DataFrame(
+    future_df = pd.DataFrame(
         y_pred,
         index=future_dates,
         columns=["Close"]
     )
 
-    combined = pd.concat([recent_actual, future_pred])
-
-    st.line_chart(combined)
+    st.line_chart(pd.concat([recent, future_df]))
 
 # --------------------------------------------------
 # FOOTER
 # --------------------------------------------------
 st.markdown("---")
-st.caption(
-    "SimpleRNN | Python 3.13 Safe | Streamlit Cloud Deployment"
-)
+st.caption("SimpleRNN | Feature-safe | Python 3.13 | Streamlit Cloud")
