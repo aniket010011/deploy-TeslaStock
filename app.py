@@ -109,10 +109,20 @@ if st.button("🚀 Predict Closing Price"):
 
         y_pred_scaled = model.predict(X_input, verbose=0)
 
-        dummy = np.zeros((y_pred_scaled.shape[0], expected_features))
-        dummy[:, 0] = y_pred_scaled.flatten()  # Close always index 0
+        # y_pred_scaled shape:
+        # (1, horizon) for multi-day
+        # (1, 1) for 1-day
 
-        y_pred = scaler.inverse_transform(dummy)[:, 0]
+        predictions = []
+
+    for i in range(y_pred_scaled.shape[1]):
+        dummy = np.zeros((1, expected_features))
+        dummy[0, 0] = y_pred_scaled[0, i]  # Close is index 0
+        inv = scaler.inverse_transform(dummy)[0, 0]
+        predictions.append(inv)
+
+y_pred = np.array(predictions)
+
 
     st.subheader(f"📊 {horizon}-Day Prediction")
 
@@ -142,3 +152,4 @@ if st.button("🚀 Predict Closing Price"):
 # --------------------------------------------------
 st.markdown("---")
 st.caption("SimpleRNN | Feature-safe | Python 3.13 | Streamlit Cloud")
+
