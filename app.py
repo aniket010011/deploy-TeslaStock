@@ -148,27 +148,19 @@ if st.button("🚀 Predict Closing Price"):
     # --------------------------------------------------
     st.subheader("📉 Actual vs Predicted Trend")
 
-    recent_actual = df[["Close"]].tail(100)
+# Actual historical data
+actual_df = df[["Close"]].tail(100).copy()
+actual_df.rename(columns={"Close": "Actual"}, inplace=True)
 
-    future_dates = pd.date_range(
-        start=recent_actual.index[-1],
-        periods=horizon + 1,
-        freq="B"
-    )[1:]
-
-    future_pred = pd.DataFrame(
-        y_pred,
-        index=future_dates,
-        columns=["Close"]
-    )
-
-    combined = pd.concat([recent_actual, future_pred])
-    st.line_chart(combined)
-
-# --------------------------------------------------
-# FOOTER
-# --------------------------------------------------
-st.markdown("---")
-st.caption(
-    "SimpleRNN | Multi-Step Forecasting | Python 3.13 | Streamlit Cloud"
+# Predicted future data
+pred_df = pd.DataFrame(
+    y_pred,
+    index=future_dates,
+    columns=["Predicted"]
 )
+
+# Combine for plotting
+plot_df = pd.concat([actual_df, pred_df], axis=0)
+
+st.line_chart(plot_df)
+
