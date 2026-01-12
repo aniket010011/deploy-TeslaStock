@@ -18,7 +18,6 @@ MODEL_PATHS = {
 
 DATA_PATH = "TSLA.csv"
 
-# Superset of all possible features
 ALL_FEATURES = [
     "Close",
     "Volume",
@@ -36,7 +35,6 @@ def load_data():
     df["Date"] = pd.to_datetime(df["Date"])
     df.set_index("Date", inplace=True)
 
-    # Feature engineering
     df["Close"] = df["Close"].interpolate(method="time")
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
@@ -53,7 +51,13 @@ def load_rnn_model(horizon):
     return load_model(MODEL_PATHS[horizon])
 
 # --------------------------------------------------
-# UI SETUP
+# STREAMLIT STATE INIT (CRITICAL)
+# --------------------------------------------------
+if "y_pred" not in st.session_state:
+    st.session_state.y_pred = None
+
+# --------------------------------------------------
+# UI
 # --------------------------------------------------
 st.set_page_config(
     page_title="Tesla Stock Price Prediction (SimpleRNN)",
@@ -62,13 +66,10 @@ st.set_page_config(
 
 st.title("📈 Tesla Stock Price Prediction using SimpleRNN")
 st.write(
-    "Deployed using trained **SimpleRNN** models "
-    "for 1-day, 5-day, and 10-day forecasting."
+    "Deployed using trained SimpleRNN models for "
+    "1-day, 5-day, and 10-day forecasting."
 )
 
-# --------------------------------------------------
-# LOAD DATA
-# --------------------------------------------------
 df = load_data()
 
 # --------------------------------------------------
@@ -83,9 +84,6 @@ horizon = st.sidebar.selectbox(
 
 model = load_rnn_model(horizon)
 
-# --------------------------------------------------
-# FEATURE ALIGNMENT
-# --------------------------------------------------
 expected_features = model.input_shape[2]
 FEATURE_COLUMNS = ALL_FEATURES[:expected_features]
 
@@ -102,44 +100,33 @@ scaler = MinMaxScaler()
 X_scaled = scaler.fit_transform(X)
 
 X_input = X_scaled[-WINDOW_SIZE:]
-X_input = X_input.reshape(
-    1,
-    WINDOW_SIZE,
-    expected_features
-)
+X_input = X_input.reshape(1, WINDOW_SIZE, expected_features)
 
 # --------------------------------------------------
-# PREDICTION
+# PREDICT BUTTON
 # --------------------------------------------------
 if st.button("🚀 Predict Closing Price"):
-    with st.spinner("Running SimpleRNN prediction..."):
+    y_pred_scaled = model.predict(X_input, verbose=0)
 
-        y_pred_scaled = model.predict(X_input, verbose=0)
-        # Shapes:
-        # (1, 1)  -> 1 day
-        # (1, 5)  -> 5 days
-        # (1, 10) -> 10 days
+    predictions = []
+    for i in range(y_pred_scaled.shape[1]):
+        dummy = np.zeros((1, expected_features))
+        dummy[0, 0] = y_pred_scaled[0, i]
+        inv = scaler.inverse_transform(dummy)[0, 0]
+        predictions.append(inv)
 
-        predictions = []
+    st.session_state.y_pred = np.array(predictions)
 
-        for i in range(y_pred_scaled.shape[1]):
-            dummy = np.zeros((1, expected_features))
-            dummy[0, 0] = y_pred_scaled[0, i]  # Close is always index 0
-            inv = scaler.inverse_transform(dummy)[0, 0]
-            predictions.append(inv)
+# --------------------------------------------------
+# DISPLAY RESULTS
+# --------------------------------------------------
+if st.session_state.y_pred is not None:
+    y_pred = st.session_state.y_pred
 
-        y_pred = np.array(predictions)
-
-    # --------------------------------------------------
-    # OUTPUT
-    # --------------------------------------------------
     st.subheader(f"📊 {horizon}-Day Prediction")
 
     if horizon == 1:
-        st.metric(
-            "Predicted Closing Price",
-            f"${y_pred[0]:.2f}"
-        )
+        st.metric("Predicted Closing Price", f"${y_pred[0]:.2f}")
     else:
         st.dataframe(
             pd.DataFrame(
@@ -151,24 +138,24 @@ if st.button("🚀 Predict Closing Price"):
         )
 
     # --------------------------------------------------
-    # VISUALIZATION (ACTUAL vs PREDICTED)
+    # OVERLAPPING ACTUAL vs PREDICTED
     # --------------------------------------------------
-st.subheader("📉 Actual vs Predicted Trend ")
+    st.subheader("📉 Actual vs Predicted Trend")
 
-# Use the LAST `horizon` actual values for comparison
-actual_overlap = df[["Close"]].tail(horizon).copy()
-actual_overlap.rename(columns={"Close": "Actual"}, inplace=True)
+    actual_df = df[["Close"]].tail(horizon).copy()
+    actual_df.rename(columns={"Close": "Actual"}, inplace=True)
 
-# Use the SAME index for predictions
-pred_overlap = pd.DataFrame(
-    y_pred,
-    index=actual_overlap.index,
-    columns=["Predicted"]
-)
+    pred_df = pd.DataFrame(
+        y_pred,
+        index=actual_df.index,
+        columns=["Predicted"]
+    )
 
-# Combine side-by-side
-plot_df = pd.concat([actual_overlap, pred_overlap], axis=1)
+    plot_df = pd.concat([actual_df, pred_df], axis=1)
+    st.line_chart(plot_df)
 
-st.line_chart(plot_df)
-
-
+# --------------------------------------------------
+# FOOTER
+# --------------------------------------------------
+st.markdown("---")
+st.caption("SimpleRNN | Deep Learning | Prediction using Streamlit")
