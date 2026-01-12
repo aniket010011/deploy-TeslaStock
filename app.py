@@ -153,34 +153,21 @@ if st.button("🚀 Predict Closing Price"):
     # --------------------------------------------------
     # VISUALIZATION (ACTUAL vs PREDICTED)
     # --------------------------------------------------
-    st.subheader("📉 Actual vs Predicted Trend")
+st.subheader("📉 Actual vs Predicted Trend (Overlapping)")
 
-    # Actual historical prices
-    actual_df = df[["Close"]].tail(100).copy()
-    actual_df.rename(columns={"Close": "Actual"}, inplace=True)
+# Use the LAST `horizon` actual values for comparison
+actual_overlap = df[["Close"]].tail(horizon).copy()
+actual_overlap.rename(columns={"Close": "Actual"}, inplace=True)
 
-    # Predicted future prices
-    future_dates = pd.date_range(
-        start=actual_df.index[-1],
-        periods=horizon + 1,
-        freq="B"
-    )[1:]
-
-    pred_df = pd.DataFrame(
-        y_pred,
-        index=future_dates,
-        columns=["Predicted"]
-    )
-
-    # Combine for plotting
-    plot_df = pd.concat([actual_df, pred_df], axis=0)
-
-    st.line_chart(plot_df)
-
-# --------------------------------------------------
-# FOOTER
-# --------------------------------------------------
-st.markdown("---")
-st.caption(
-    "SimpleRNN | Multi-Step Forecasting "
+# Use the SAME index for predictions
+pred_overlap = pd.DataFrame(
+    y_pred,
+    index=actual_overlap.index,
+    columns=["Predicted"]
 )
+
+# Combine side-by-side
+plot_df = pd.concat([actual_overlap, pred_overlap], axis=1)
+
+st.line_chart(plot_df)
+
